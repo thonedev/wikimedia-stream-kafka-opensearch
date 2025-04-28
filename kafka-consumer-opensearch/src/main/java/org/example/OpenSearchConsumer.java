@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Properties;
 
@@ -75,11 +74,15 @@ public class OpenSearchConsumer {
 
                         var response = openSearchClient.index(indexRequest, RequestOptions.DEFAULT);
 
-                        log.info("Inserted 1 document into OpenSearch ID: {}", response.getId());
+                        //log.info("Inserted 1 document into OpenSearch ID: {}", response.getId());
                     } catch (Exception e) {
 
                     }
                 }
+
+                // commit offsets after the batch is consumed
+                consumer.commitSync();
+
             }
 
         }
@@ -106,6 +109,8 @@ public class OpenSearchConsumer {
         properties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
 
         return new KafkaConsumer<>(properties);
     }
