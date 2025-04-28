@@ -10,6 +10,8 @@ import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.client.RequestOptions;
 import org.opensearch.client.RestClient;
@@ -29,13 +31,12 @@ import java.util.Properties;
 public class OpenSearchConsumer {
     public static void main(String[] args) throws IOException {
         final var log = LoggerFactory.getLogger(OpenSearchConsumer.class);
-        
+
         log.info("Create Kafka consumer");
         KafkaConsumer<String, String> consumer = createKafkaConsumer();
 
         log.info("Create an OpenSearch Client");
         var openSearchClient = createOpenSearchClient();
-
 
 
         // we need to create the index on OpenSearch if it doesn't exist already
@@ -58,6 +59,8 @@ public class OpenSearchConsumer {
                 var recordCount = records.count();
                 log.info("received {} record(s)", recordCount);
 
+                var bulkRequest = new BulkRequest();
+
                 for (var record : records) {
                     // strategy 1 to prevent to lost messages without processing
                     // define an ID using Kafka Record coordinates
@@ -72,7 +75,9 @@ public class OpenSearchConsumer {
                                 .source(record.value(), XContentType.JSON)
                                 .id(id);
 
-                        var response = openSearchClient.index(indexRequest, RequestOptions.DEFAULT);
+//                        var response = openSearchClient.index(indexRequest, RequestOptions.DEFAULT);
+
+                        bulkRequest.add(indexRequest);
 
                         //log.info("Inserted 1 document into OpenSearch ID: {}", response.getId());
                     } catch (Exception e) {
@@ -80,8 +85,21 @@ public class OpenSearchConsumer {
                     }
                 }
 
-                // commit offsets after the batch is consumed
-                consumer.commitSync();
+                if (bulkRequest.numberOfActions() > 0) {
+                    var bulkResponse = openSearchClient.bulk(bulkRequest, RequestOptions.DEFAULT);
+                    log.info("Inserted {} record(s)", bulkResponse.getItems().length);
+
+
+                    // commit offsets after the batch is consumed
+                    consumer.commitSync();
+
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
 
             }
 
