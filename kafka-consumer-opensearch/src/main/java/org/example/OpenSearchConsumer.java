@@ -9,9 +9,9 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.opensearch.action.bulk.BulkRequest;
-import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.client.RequestOptions;
 import org.opensearch.client.RestClient;
@@ -34,6 +34,21 @@ public class OpenSearchConsumer {
 
         log.info("Create Kafka consumer");
         KafkaConsumer<String, String> consumer = createKafkaConsumer();
+
+        final var mainThread = Thread.currentThread();
+
+        // adding the shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            log.info("Detected shutdown, closing Kafka consumer...");
+            consumer.wakeup(); // Important: wakeup any blocking poll()
+            log.info("Kafka consumer closed.");
+
+            try {
+                mainThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }));
 
         log.info("Create an OpenSearch Client");
         var openSearchClient = createOpenSearchClient();
@@ -103,6 +118,14 @@ public class OpenSearchConsumer {
 
             }
 
+        } catch (WakeupException e) {
+            log.info("Consumer is starting to shut down");
+        } catch (Exception e) {
+            log.error("Unexpected exception in the consumer");
+        } finally {
+            consumer.close();
+            openSearchClient.close();
+            log.info("The consumer is now gracefully shut down");
         }
     }
 
